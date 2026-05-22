@@ -5,10 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Monitoreo Global de Pozo</title>
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
+    <script src="https://unpkg.com/mqtt@4.3.0/dist/mqtt.min.js" type="text/javascript"></script>
     
     <style>
-        /* --- ESTILOS VISUALES (CSS) --- */
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #f0f2f5;
@@ -39,7 +38,6 @@
             box-sizing: border-box;
         }
 
-        /* Contenedor del Tanque/Pozo */
         .tank-container {
             position: relative;
             width: 150px;
@@ -53,18 +51,16 @@
             box-shadow: inset 0 0 15px rgba(0,0,0,0.05);
         }
 
-        /* Animación y fluido del agua */
         .water {
             position: absolute;
             bottom: 0;
             width: 100%;
             background: linear-gradient(to top, #0f172a, #2563eb);
-            height: 0%; /* Este porcentaje cambiará dinámicamente con los datos */
+            height: 0%; 
             transition: height 1.2s cubic-bezier(0.4, 0, 0.2, 1);
             box-shadow: 0 -2px 10px rgba(37, 99, 235, 0.4);
         }
 
-        /* Texto de porcentaje grande */
         .percentage-display {
             font-size: 3.5rem;
             font-weight: 800;
@@ -72,7 +68,6 @@
             margin: 10px 0;
         }
 
-        /* Indicador de estado de conexión */
         .status-badge {
             display: inline-block;
             padding: 6px 14px;
@@ -84,15 +79,8 @@
             transition: all 0.3s ease;
         }
 
-        .connected {
-            background-color: #dcfce7;
-            color: #15803d;
-        }
-
-        .disconnected {
-            background-color: #fee2e2;
-            color: #b91c1c;
-        }
+        .connected { background-color: #dcfce7; color: #15803d; }
+        .disconnected { background-color: #fee2e2; color: #b91c1c; }
     </style>
 </head>
 <body>
@@ -104,69 +92,62 @@
         <div class="tank-container">
             <div id="waterLevel" class="water"></div>
         </div>
-        
         <div id="percentageText" class="percentage-display">0%</div>
         <div id="connectionStatus" class="status-badge">Conectando a la red...</div>
     </div>
 
     <script>
-        // --- CONFIGURACIÓN DEL PUENTE EN LA NUBE (MQTT) ---
-        const BROKER = "broker.hivemq.com";
-        const PORT = 8014; // Puerto WebSocket indispensable para páginas web
-        
-        // Generamos una identificación única para la pestaña del navegador
-        const CLIENT_ID = "web_pozo_client_" + Math.random().toString(16).substr(2, 8);
-        
-        // ⚠️ ATENCIÓN: Este canal DEBE SER IDÉNTICO al "topic_publicar" que le pusiste a tu ESP32
+        // Configuración forzada para Web Sockets Seguros (WSS) a través del puerto público de HiveMQ
+        const BROKER_URL = 'wss://broker.hivemq.com:8014/mqtt';
         const TOPIC_LEER = "mi_proyecto_pozo/datos"; 
+        
+        const statusBadge = document.getElementById('connectionStatus');
+        const waterLevel = document.getElementById('waterLevel');
+        const percentageText = document.getElementById('percentageText');
 
-        // Inicializamos el cliente que se conectará al servidor web remoto
-        const client = new paho.MQTT.Client(BROKER, PORT, CLIENT_ID);
+        console.log("Iniciando conexión al broker...");
+        
+        // Intentamos enlazar usando la nueva librería
+        const client = mqtt.connect(BROKER_URL, {
+            clientId: 'web_client_' + Math.random().toString(16).substr(2, 8),
+            clean: true,
+            connectTimeout: 4000
+        });
 
-        // ¿Qué pasa si se pierde la conexión con el servidor intermedio?
-        client.onConnectionLost = function (responseObject) {
-            const statusBadge = document.getElementById('connectionStatus');
-            statusBadge.innerText = "Desconectado de la nube";
-            statusBadge.className = "status-badge disconnected";
-        };
+        // Evento cuando se conecta con éxito
+        client.on('connect', () => {
+            console.log("¡Conexión MQTT Exitosa!");
+            statusBadge.innerText = "Monitoreando en Vivo";
+            statusBadge.className = "status-badge connected";
+            client.subscribe(TOPIC_LEER);
+        });
 
-        // El momento clave: ¡Llegó un dato desde el pozo!
-        client.onMessageArrived = function (message) {
+        // Evento cuando llega un dato del ESP32
+        client.on('message', (topic, payload) => {
             try {
-                // Convertimos el texto JSON que mandó el ESP32 a un objeto legible por la web
-                const datos = JSON.parse(message.payloadString);
+                const datos = JSON.parse(payload.toString());
                 const porcentaje = datos.porcentaje;
-
-                // Actualizamos la altura de la animación del cilindro
-                document.getElementById('waterLevel').style.height = porcentaje + '%';
                 
-                // Actualizamos el número gigante en pantalla
-                document.getElementById('percentageText').innerText = porcentaje + '%';
-            } catch (error) {
-                console.error("Error al interpretar los datos recibidos:", error);
+                // Actualizar interfaz
+                waterLevel.style.height = porcentaje + '%';
+                percentageText.innerText = porcentaje + '%';
+                console.log("Dato recibido con éxito: ", porcentaje);
+            } catch (e) {
+                console.error("Error leyendo el paquete de datos:", e);
             }
-        };
+        });
 
-// Intentar conectarse al servidor en la nube de forma segura y forzada
-        client.connect({
-            onSuccess: function () {
-                const statusBadge = document.getElementById('connectionStatus');
-                statusBadge.innerText = "Monitoreando en Vivo";
-                statusBadge.className = "status-badge connected";
-                
-                // Nos suscribimos al canal del pozo
-                client.subscribe(TOPIC_LEER);
-            },
-            onFailure: function (message) {
-                // Si falla, te avisará en la pantalla el motivo real
-                const statusBadge = document.getElementById('connectionStatus');
-                statusBadge.innerText = "Fallo de conexión: " + message.errorMessage;
+        // Si hay error en la red, lo pintamos en la pantalla
+        client.on('error', (err) => {
+            statusBadge.innerText = "Error: " + err.message;
+            statusBadge.className = "status-badge disconnected";
+        });
+
+        client.on('close', () => {
+            if(statusBadge.innerText === "Monitoreando en Vivo") {
+                statusBadge.innerText = "Conexión cerrada";
                 statusBadge.className = "status-badge disconnected";
-            },
-            useSSL: true,
-            timeout: 3,
-            keepAliveInterval: 60,
-            cleanSession: true
+            }
         });
     </script>
 </body>
