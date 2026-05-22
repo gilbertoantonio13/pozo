@@ -96,58 +96,54 @@
         <div id="connectionStatus" class="status-badge">Conectando a la red...</div>
     </div>
 
-    <script>
-        // Configuración forzada para Web Sockets Seguros (WSS) a través del puerto público de HiveMQ
-        const BROKER_URL = 'wss://broker.hivemq.com:8014/mqtt';
+<script>
+        // --- CAMBIO DE BROKER A EMQX (Seguro y compatible con navegadores) ---
+        const BROKER_URL = 'wss://broker.emqx.io:8084/mqtt';
         const TOPIC_LEER = "mi_proyecto_pozo/datos"; 
         
         const statusBadge = document.getElementById('connectionStatus');
         const waterLevel = document.getElementById('waterLevel');
         const percentageText = document.getElementById('percentageText');
 
-        console.log("Iniciando conexión al broker...");
+        console.log("Conectando al servidor de alto rendimiento EMQX...");
         
-        // Intentamos enlazar usando la nueva librería
         const client = mqtt.connect(BROKER_URL, {
-            clientId: 'web_client_' + Math.random().toString(16).substr(2, 8),
+            clientId: 'web_pozo_' + Math.random().toString(16).substr(2, 8),
             clean: true,
-            connectTimeout: 4000
+            connectTimeout: 5000
         });
 
-        // Evento cuando se conecta con éxito
         client.on('connect', () => {
-            console.log("¡Conexión MQTT Exitosa!");
+            console.log("¡Conexión Exitosa con EMQX!");
             statusBadge.innerText = "Monitoreando en Vivo";
             statusBadge.className = "status-badge connected";
-            client.subscribe(TOPIC_LEER);
+            client.subscribe(TOPIC_LEER, (err) => {
+                if (!err) {
+                    console.log("Suscrito al canal: " + TOPIC_LEER);
+                }
+            });
         });
 
-        // Evento cuando llega un dato del ESP32
         client.on('message', (topic, payload) => {
             try {
                 const datos = JSON.parse(payload.toString());
                 const porcentaje = datos.porcentaje;
                 
-                // Actualizar interfaz
                 waterLevel.style.height = porcentaje + '%';
                 percentageText.innerText = porcentaje + '%';
-                console.log("Dato recibido con éxito: ", porcentaje);
+                console.log("Dato recibido: ", porcentaje);
             } catch (e) {
-                console.error("Error leyendo el paquete de datos:", e);
+                console.error("Error interpretando JSON:", e);
             }
         });
 
-        // Si hay error en la red, lo pintamos en la pantalla
         client.on('error', (err) => {
             statusBadge.innerText = "Error: " + err.message;
             statusBadge.className = "status-badge disconnected";
         });
 
         client.on('close', () => {
-            if(statusBadge.innerText === "Monitoreando en Vivo") {
-                statusBadge.innerText = "Conexión cerrada";
-                statusBadge.className = "status-badge disconnected";
-            }
+            console.log("Conexión interrumpida.");
         });
     </script>
 </body>
