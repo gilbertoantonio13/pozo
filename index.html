@@ -33,14 +33,14 @@
             padding: 30px;
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
             width: 100%;
-            max-width: 380px;
+            max-width: 550px;
             text-align: center;
             box-sizing: border-box;
         }
 
         .tank-container {
             position: relative;
-            width: 150px;
+            width: 420px;
             height: 260px;
             border: 5px solid #334155;
             border-top: none;
@@ -65,7 +65,7 @@
             font-size: 3.5rem;
             font-weight: 800;
             color: #1e3a8a;
-            margin: 10px 0;
+            margin: 5px 0;
         }
 
         .status-badge {
@@ -74,13 +74,40 @@
             border-radius: 20px;
             font-size: 0.85rem;
             font-weight: 600;
+            margin-top: 10px;
             background-color: #fef3c7;
             color: #d97706;
             transition: all 0.3s ease;
         }
+	
+		/* Estilo para el mensaje de alerta */
+	.danger-alert {
+    		background-color: #fee2e2;
+    		color: #991b1b;
+    		border: 2px solid #f87171;
+    		padding: 10px;
+    		border-radius: 8px;
+    		font-weight: bold;
+    		margin-top: 0px;
+    		font-size: 0.9rem;
+    		animation: parpadeo 1s infinite alternate;
+	}
+
+		/* Animación de parpadeo para llamar la atención */
+	@keyframes parpadeo {
+    		from { opacity: 1; transform: scale(1); }
+    		to { opacity: 0.7; transform: scale(0.98); }
+	}
+
+		/* Clase extra para pintar el agua de rojo/alerta cuando se llene */
+	.water.danger-level {
+    		background: linear-gradient(to top, #7f1d1d, #ef4444) !important;
+    		box-shadow: 0 -2px 15px rgba(239, 68, 68, 0.7);
+	}
 
         .connected { background-color: #dcfce7; color: #15803d; }
         .disconnected { background-color: #fee2e2; color: #b91c1c; }
+
     </style>
 </head>
 <body>
@@ -93,6 +120,9 @@
             <div id="waterLevel" class="water"></div>
         </div>
         <div id="percentageText" class="percentage-display">0%</div>
+	<div id="dangerAlert" class="danger-alert" style="display: none;">
+    ⚠️ ¡CRÍTICO: Tanque a punto de desbordarse!
+	</div>
         <div id="connectionStatus" class="status-badge">Conectando a la red...</div>
     </div>
 
@@ -132,6 +162,19 @@
                 waterLevel.style.height = porcentaje + '%';
                 percentageText.innerText = porcentaje + '%';
                 console.log("Dato recibido: ", porcentaje);
+	
+	// --- NUEVA LÓGICA DE DETECCIÓN DE DESBORDAMIENTO ---
+                if (porcentaje >= 95) {
+                    // Si es 95% o más, muestra el letrero y pinta el agua de rojo
+                    dangerAlert.style.display = 'block';
+                    waterLevel.classList.add('danger-level');
+                    percentageText.style.color = '#b91c1c'; // Cambia el texto del número a rojo
+                } else {
+                    // Si baja de 90%, oculta la alerta y regresa el agua a su azul normal
+                    dangerAlert.style.display = 'none';
+                    waterLevel.classList.remove('danger-level');
+                    percentageText.style.color = '#1e3a8a'; // Regresa el número a azul
+                }
             } catch (e) {
                 console.error("Error interpretando JSON:", e);
             }
