@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoreo Global de Pozo</title>
+    
+    <script src="https://unpkg.com/mqtt@4.3.0/dist/mqtt.min.js" type="text/javascript"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            margin: 0;
+            padding: 0px 20px 20px 20px; 
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start; 
+            min-height: 100vh;
+        }
+
+        h1 {
+            margin-top: 15px; 
+            margin-bottom: 0px;
+            color: #1e293b;
+            font-size: 1.8rem;
+        }
+
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        .nav-btn {
+            background-color: #e2e8f0;
+            color: #475569;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .nav-btn.active {
+            background-color: #2563eb;
+            color: white;
+            box-shadow: 0 4px 10px rgba(37, 99, 235, 0.2);
+        }
+
+        .view-section {
+            width: 100%;
+            max-width: 420px; /* Ampliado un poco para que la gráfica luzca mejor */
+        }
+
+        .dashboard {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 15px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+            text-align: center;
+            box-sizing: border-box;
+        }
+
+        .tank-container {
+            position: relative;
+            width: 150px;
+            height: 260px;
+            border: 5px solid #334155;
+            border-top: none;
+            border-radius: 0 0 20px 20px;
+            margin: 5px auto;
+            background: #f1f5f9;
+            overflow: hidden;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.05);
+        }
+
+        .water {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            background: linear-gradient(to top, #0f172a, #2563eb);
+            height: 0%; 
+            transition: height 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 -2px 10px rgba(37, 99, 235, 0.4);
+        }
+
+        .percentage-display {
+            font-size: 3.5rem;
+            font-weight: 800;
+            color: #1e3a8a;
+            margin: 0px 0;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            background-color: #fef3c7;
+            color: #d97706;
+            transition: all 0.3s ease;
+        }
+    
+        .danger-alert {
+            padding: 10px;
+            border-radius: 8px;
+            font-weight: bold;
+            margin-top: 10px;
+            font-size: 0.9rem;
+            animation: parpadeo 1s infinite alternate;
+        }
+
+        .alert-high { background-color: #fee2e2; color: #991b1b; border: 2px solid #f87171; }
+        .alert-low { background-color: #fef3c7; color: #92400e; border: 2px solid #fbbf24; }
+
+        @keyframes parpadeo {
+            from { opacity: 1; transform: scale(1); }
+            to { opacity: 0.7; transform: scale(0.98); }
+        }
+
+        .water.danger-high {
+            background: linear-gradient(to top, #7f1d1d, #ef4444) !important;
+            box-shadow: 0 -2px 15px rgba(239, 68, 68, 0.7);
+        }
+
+        .water.danger-low {
+            background: linear-gradient(to top, #78350f, #f59e0b) !important;
+            box-shadow: 0 -2px 15px rgba(245, 158, 11, 0.7);
+        }
+
+        .connected { background-color: #dcfce7; color: #15803d; }
+        .disconnected { background-color: #fee2e2; color: #b91c1c; }
+
+        /* Estilo para ajustar el tamaño del lienzo de la gráfica */
+        .chart-container {
+            position: relative;
+            margin-top: 15px;
+            width: 100%;
+            height: 220px;
+        }
+
+        .btn-clear {
+            background-color: #fee2e2;
+            color: #b91c1c;
+            border: 1px solid #fca5a5;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Monitoreo de Pozo</h1>
+    <p style="color: #64748b; margin-top: 5px; margin-bottom: 10px;">Lectura Remota en Tiempo Real</p>
+    
+    <div class="nav-tabs">
+        <button id="btnLive" class="nav-btn active" onclick="switchView('live')">En Vivo</button>
+        <button id="btnHistory" class="nav-btn" onclick="switchView('history')">Historial Semanal</button>
+    </div>
+
+    <div id="liveView" class="view-section">
+        <div class="dashboard">
+            <div class="tank-container">
+                <div id="waterLevel" class="water"></div>
+            </div>
+            <div id="percentageText" class="percentage-display">0%</div>
+            <div id="connectionStatus" class="status-badge">Conectando a la red...</div>
+            
+            <div id="dangerAlert" class="danger-alert alert-high" style="display: none;">
+                ⚠️ NIVEL CRÍTICO ⚠️<br>¡Tanque a punto de desbordarse!
+            </div>
+            
+            <div id="dangerAlert2" class="danger-alert alert-low" style="display: none;">
+                ⚠️ NIVEL CRÍTICO ⚠️<br>¡Tanque casi vacío!
+            </div>
+        </div>
+    </div>
+
+    <div id="historyView" class="view-section" style="display: none;">
+        <div class="dashboard">
+            <h3 style="margin: 5px 0; color: #1e293b;">Tendencia del Nivel</h3>
+            <div class="chart-container">
+                <canvas id="liveChart"></canvas>
+            </div>
+            <button class="btn-clear" onclick="limpiarHistorial()">Borrar Historial</button>
+        </div>
+    </div>
+
+<script>
+        // --- CONFIGURACIÓN DE LA GRÁFICA (Chart.js) ---
+        const ctx = document.getElementById('liveChart').getContext('2d');
+        
+        // Cargamos datos previos guardados en el navegador (si existen)
+        let historialDatos = JSON.parse(localStorage.getItem('historicoPozo')) || [];
+        
+        // Separamos el JSON guardado en etiquetas (tiempo) y valores (porcentaje)
+        const labelsIniciales = historialDatos.map(d => d.hora);
+        const valoresIniciales = historialDatos.map(d => d.valor);
+
+        const miGrafica = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labelsIniciales,
+                datasets: [{
+                    label: 'Nivel del Agua (%)',
+                    data: valoresIniciales,
+                    borderColor: '#2563eb',
+                    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                    borderWidth: 2,
+                    tension: 0.3, // Curvatura de la línea
+                    fill: true,
+                    pointRadius: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { min: 0, max: 100 } // Forzamos escala de 0 a 100%
+                }
+            }
+        });
+
+        // --- SISTEMA DE MANEJO DE VISTAS ---
+        function switchView(view) {
+            const liveView = document.getElementById('liveView');
+            const historyView = document.getElementById('historyView');
+            const btnLive = document.getElementById('btnLive');
+            const btnHistory = document.getElementById('btnHistory');
+
+            if (view === 'live') {
+                liveView.style.display = 'block';
+                historyView.style.display = 'none';
+                btnLive.classList.add('active');
+                btnHistory.classList.remove('active');
+            } else {
+                liveView.style.display = 'block'; // Truco para actualizar dimensiones correctamente antes de renderizar
+                liveView.style.display = 'none';
+                historyView.style.display = 'block';
+                btnLive.classList.remove('active');
+                btnHistory.classList.add('active');
+                miGrafica.update(); // Redibuja la gráfica con los datos frescos
+            }
+        }
+
+        // --- CONEXIÓN MQTT Y CAPTURA MINUCIOSA ---
+        const BROKER_URL = 'wss://broker.emqx.io:8084/mqtt';
+        const TOPIC_LEER = "mi_proyecto_pozo/datos"; 
+        
+        const statusBadge = document.getElementById('connectionStatus');
+        const waterLevel = document.getElementById('waterLevel');
+        const percentageText = document.getElementById('percentageText');
+        const dangerAlert = document.getElementById('dangerAlert');
+        const dangerAlert2 = document.getElementById('dangerAlert2');
+
+        const client = mqtt.connect(BROKER_URL, {
+            clientId: 'web_pozo_' + Math.random().toString(16).substr(2, 8),
+            clean: true,
+            connectTimeout: 5000
+        });
+
+        client.on('connect', () => {
+            statusBadge.innerText = "Monitoreando en Vivo";
+            statusBadge.className = "status-badge connected";
+            client.subscribe(TOPIC_LEER);
+        });
+
+        client.on('message', (topic, payload) => {
+            try {
+                const datos = JSON.parse(payload.toString());
+                const porcentaje = datos.porcentaje;
+                
+                // 1. Actualizar Tanque Visual en pantalla principal
+                waterLevel.style.height = porcentaje + '%';
+                percentageText.innerText = porcentaje + '%';
+    
+                if (porcentaje >= 95) {
+                    dangerAlert.style.display = 'block';
+                    dangerAlert2.style.display = 'none';
+                    waterLevel.className = "water danger-high";
+                    percentageText.style.color = '#b91c1c';
+                } else if (porcentaje < 10) {
+                    dangerAlert.style.display = 'none';
+                    dangerAlert2.style.display = 'block';
+                    waterLevel.className = "water danger-low";
+                    percentageText.style.color = '#b45309';
+                } else {
+                    dangerAlert.style.display = 'none';
+                    dangerAlert2.style.display = 'none';
+                    waterLevel.className = "water";
+                    percentageText.style.color = '#1e3a8a';
+                }
+
+                // 2. RECOPILACIÓN MINUCIOSA EN MEMORIA LOCAL
+                const ahora = new Date();
+                // Formato de hora legible corto (ej: "Lun 14:05")
+                const opciones = { weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false };
+                const horaFormateada = ahora.toLocaleDateString('es-MX', opciones);
+
+                // Añadimos el nuevo punto al array en memoria
+                historialDatos.push({ hora: horaFormateada, valor: porcentaje });
+
+                // Filtro Semanal: Si acumulas demasiadas lecturas detalladas (ej: más de 500), 
+                // descarta la más antigua para no saturar el almacenamiento del navegador
+                if (historialDatos.length > 500) {
+                    historialDatos.shift();
+                }
+
+                // Guardamos la lista actualizada en el disco del navegador
+                localStorage.setItem('historicoPozo', JSON.stringify(historialDatos));
+
+                // Añadimos el dato dinámicamente a la gráfica por si la tienes abierta
+                miGrafica.data.labels.push(horaFormateada);
+                miGrafica.data.datasets[0].data.push(porcentaje);
+                if (miGrafica.data.labels.length > 500) {
+                    miGrafica.data.labels.shift();
+                    miGrafica.data.datasets[0].data.shift();
+                }
+                miGrafica.update();
+
+            } catch (e) {
+                console.error("Error interpretando JSON:", e);
+            }
+        });
+
+        // Función para resetear el gráfico si quieres limpiar la memoria
+        function limpiarHistorial() {
+            if(confirm("¿Seguro que quieres vaciar la gráfica histórica?")) {
+                localStorage.removeItem('historicoPozo');
+                historialDatos = [];
+                miGrafica.data.labels = [];
+                miGrafica.data.datasets[0].data = [];
+                miGrafica.update();
+            }
+        }
+
+        client.on('error', (err) => {
+            statusBadge.innerText = "Error: " + err.message;
+            statusBadge.className = "status-badge disconnected";
+        });
+    </script>
+</body>
+</html>
