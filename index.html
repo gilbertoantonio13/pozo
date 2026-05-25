@@ -12,12 +12,13 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #f0f2f5;
             margin: 0;
-            padding: 20px;
+            margin-top: 0;
+            padding: 0px;
             color: #333;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-start;
             min-height: 100vh;
         }
 
@@ -79,35 +80,49 @@
             color: #d97706;
             transition: all 0.3s ease;
         }
-	
-		/* Estilo para el mensaje de alerta */
-	.danger-alert {
-    		background-color: #fee2e2;
-    		color: #991b1b;
-    		border: 2px solid #f87171;
-    		padding: 10px;
-    		border-radius: 8px;
-    		font-weight: bold;
-    		margin-top: 10px;
-    		font-size: 0.9rem;
-    		animation: parpadeo 1s infinite alternate;
-	}
+    
+        /* --- ESTILOS PARA LAS ALERTAS --- */
+        .danger-alert {
+            padding: 10px;
+            border-radius: 8px;
+            font-weight: bold;
+            margin-top: 10px;
+            font-size: 0.9rem;
+            animation: parpadeo 1s infinite alternate;
+        }
 
-		/* Animación de parpadeo para llamar la atención */
-	@keyframes parpadeo {
-    		from { opacity: 1; transform: scale(1); }
-    		to { opacity: 0.7; transform: scale(0.98); }
-	}
+        /* Alerta de Desbordamiento (Roja) */
+        .alert-high {
+            background-color: #fee2e2;
+            color: #991b1b;
+            border: 2px solid #f87171;
+        }
 
-		/* Clase extra para pintar el agua de rojo/alerta cuando se llene */
-	.water.danger-level {
-    		background: linear-gradient(to top, #7f1d1d, #ef4444) !important;
-    		box-shadow: 0 -2px 15px rgba(239, 68, 68, 0.7);
-	}
+        /* Alerta de Vacío (Amarilla/Naranja) */
+        .alert-low {
+            background-color: #fef3c7;
+            color: #92400e;
+            border: 2px solid #fbbf24;
+        }
+
+        @keyframes parpadeo {
+            from { opacity: 1; transform: scale(1); }
+            to { opacity: 0.7; transform: scale(0.98); }
+        }
+
+        /* Estados de color para el agua */
+        .water.danger-high {
+            background: linear-gradient(to top, #7f1d1d, #ef4444) !important;
+            box-shadow: 0 -2px 15px rgba(239, 68, 68, 0.7);
+        }
+
+        .water.danger-low {
+            background: linear-gradient(to top, #78350f, #f59e0b) !important;
+            box-shadow: 0 -2px 15px rgba(245, 158, 11, 0.7);
+        }
 
         .connected { background-color: #dcfce7; color: #15803d; }
         .disconnected { background-color: #fee2e2; color: #b91c1c; }
-
     </style>
 </head>
 <body>
@@ -121,19 +136,29 @@
         </div>
         <div id="percentageText" class="percentage-display">0%</div>
         <div id="connectionStatus" class="status-badge">Conectando a la red...</div>
-	<div id="dangerAlert" class="danger-alert" style="display: none;">
-	⚠️ ¡CRÍTICO: Tanque a punto de desbordarse!
-	</div> 
+        
+        <div id="dangerAlert" class="danger-alert alert-high" style="display: none;">
+            ⚠️ NIVEL CRÍTICO ⚠️<br>
+            ¡Tanque a punto de desbordarse!
+        </div>
+        
+        <div id="dangerAlert2" class="danger-alert alert-low" style="display: none;">
+            ⚠️ NIVEL CRÍTICO ⚠️<br>
+            ¡Tanque a punto de vaciarse!
+        </div>
     </div>
 
 <script>
-        // --- CAMBIO DE BROKER A EMQX (Seguro y compatible con navegadores) ---
         const BROKER_URL = 'wss://broker.emqx.io:8084/mqtt';
         const TOPIC_LEER = "mi_proyecto_pozo/datos"; 
         
         const statusBadge = document.getElementById('connectionStatus');
         const waterLevel = document.getElementById('waterLevel');
         const percentageText = document.getElementById('percentageText');
+        
+        // CORRECCIÓN: Vinculamos las alertas a JavaScript
+        const dangerAlert = document.getElementById('dangerAlert');
+        const dangerAlert2 = document.getElementById('dangerAlert2');
 
         console.log("Conectando al servidor de alto rendimiento EMQX...");
         
@@ -162,19 +187,33 @@
                 waterLevel.style.height = porcentaje + '%';
                 percentageText.innerText = porcentaje + '%';
                 console.log("Dato recibido: ", porcentaje);
-	
-	// --- NUEVA LÓGICA DE DETECCIÓN DE DESBORDAMIENTO ---
+    
+                // --- NUEVA LÓGICA DE DETECCIÓN OPTIMIZADA ---
                 if (porcentaje >= 95) {
-                    // Si es 95% o más, muestra el letrero y pinta el agua de rojo
+                    // CASO 1: Tanque lleno (>= 95)
                     dangerAlert.style.display = 'block';
-                    waterLevel.classList.add('danger-level');
-                    percentageText.style.color = '#b91c1c'; // Cambia el texto del número a rojo
-                } else {
-                    // Si baja de 90%, oculta la alerta y regresa el agua a su azul normal
+                    dangerAlert2.style.display = 'none';
+                    
+                    waterLevel.className = "water danger-high";
+                    percentageText.style.color = '#b91c1c'; // Número en rojo
+                    
+                } else if (porcentaje < 10) {
+                    // CASO 2: Tanque vacío (< 10)
                     dangerAlert.style.display = 'none';
-                    waterLevel.classList.remove('danger-level');
-                    percentageText.style.color = '#1e3a8a'; // Regresa el número a azul
+                    dangerAlert2.style.display = 'block';
+                    
+                    waterLevel.className = "water danger-low";
+                    percentageText.style.color = '#b45309'; // Número en naranja/amarillo
+                    
+                } else {
+                    // CASO 3: Todo normal (Entre 10 y 94)
+                    dangerAlert.style.display = 'none';
+                    dangerAlert2.style.display = 'none';
+                    
+                    waterLevel.className = "water"; // Vuelve al azul original
+                    percentageText.style.color = '#1e3a8a'; // Número en azul
                 }
+
             } catch (e) {
                 console.error("Error interpretando JSON:", e);
             }
